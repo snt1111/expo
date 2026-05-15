@@ -49,8 +49,12 @@ const __dirname = dirname(__filename);
     }
     if (startMode === 'TEST' || startMode === 'BUILD_AND_TEST') {
       const e2eDir = path.join(projectRoot, 'e2e');
+
+      await startSimulatorAsync(deviceId);
+      await installAppAsync(deviceId, appBinaryPath);
+
       await runCustomMaestroFlowsAsync(e2eDir, 'ios', (maestroFlowFilePath) =>
-        testAsync(maestroFlowFilePath, deviceId, appBinaryPath, e2eDir)
+        testAsync(maestroFlowFilePath, deviceId, e2eDir)
       );
 
       const maestroNativeModulesFlowFilePath = await createMaestroFlowAsync({
@@ -61,7 +65,7 @@ const __dirname = dirname(__filename);
 
       await retryAsync((retryNumber) => {
         console.log(`Native modules test suite attempt ${retryNumber + 1} of ${NUM_OF_RETRIES}`);
-        return testAsync(maestroNativeModulesFlowFilePath, deviceId, appBinaryPath, e2eDir);
+        return testAsync(maestroNativeModulesFlowFilePath, deviceId, e2eDir);
       }, NUM_OF_RETRIES);
     }
   } catch (e) {
@@ -186,21 +190,22 @@ async function startSimulatorAsync(deviceId: string, timeout: number = 180_000) 
   }, 3);
 }
 
+async function installAppAsync(deviceId: string, appBinaryPath: string): Promise<void> {
+  console.log(`\n🔌 Installing App - deviceId[${deviceId}] appBinaryPath[${appBinaryPath}]`);
+  await spawnAsync('xcrun', ['simctl', 'install', deviceId, appBinaryPath], { stdio: 'inherit' });
+}
+
 async function testAsync(
   maestroFlowFilePath: string,
   deviceId: string,
-  appBinaryPath: string,
   maestroWorkspaceRoot: string
 ): Promise<void> {
   startGroup(maestroFlowFilePath);
   const stopLogCollectionController = new AbortController();
 
   try {
-    await startSimulatorAsync(deviceId);
-    console.log(`\n🔌 Installing App - deviceId[${deviceId}] appBinaryPath[${appBinaryPath}]`);
-    await spawnAsync('xcrun', ['simctl', 'install', deviceId, appBinaryPath], { stdio: 'inherit' });
-
-    // Launch app with dylib injected
+    // Launch app with dylib injected. Maestro will terminate-and-relaunch the app for each
+    // `maestro test` invocation, so the dylib has to be re-injected per flow.
     const dylibPath = getDylibPath();
     console.log(`\n💉 Launching app with dylib injected - dylibPath[${dylibPath}]`);
 
