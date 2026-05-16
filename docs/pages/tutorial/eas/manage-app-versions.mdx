@@ -1,4 +1,99 @@
----
+-npx create-expo-app voice-room-app
+cd voice-room-app
+npx expo install react-native-agora firebase @react-navigation/native @react-navigation/native-stack-
+import React, { useState, useEffect } from 'react';
+import { View, Text, Button, FlatList, TextInput, StyleSheet } from 'react-native';
+import RtcEngine, { RtcEngineContext } from 'react-native-agora';
+import { initializeApp } from 'firebase/app';
+import { getDatabase, ref, onValue, push } from 'firebase/database';
+
+// ضع بياناتك هنا
+const firebaseConfig = {
+  apiKey: "YOUR_KEY",
+  authDomain: "YOUR_DOMAIN",
+  databaseURL: "YOUR_DB_URL",
+  projectId: "YOUR_PROJECT_ID",
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+const AGORA_APP_ID = "ضع_المفتاح_اللي_ارسلته_هنا";
+
+export default function App() {
+  const [engine, setEngine] = useState(null);
+  const [rooms, setRooms] = useState([]);
+  const [joined, setJoined] = useState(false);
+  const [channelName, setChannelName] = useState('');
+
+  useEffect(() => {
+    // جلب الغرف من Firebase
+    const roomsRef = ref(db, 'rooms');
+    onValue(roomsRef, (snapshot) => {
+      const data = snapshot.val();
+      setRooms(data? Object.keys(data).map(key => ({id: key,...data[key]})) : []);
+    });
+
+    // تهيئة Agora
+    const initEngine = async () => {
+      const rtcEngine = await RtcEngine.create(AGORA_APP_ID);
+      await rtcEngine.enableAudio();
+      setEngine(rtcEngine);
+    };
+    initEngine();
+
+    return () => {
+      engine?.destroy();
+    };
+  }, []);
+
+  const joinRoom = async (roomId) => {
+    if (!engine) return;
+    await engine.joinChannel(null, roomId, null, 0);
+    setChannelName(roomId);
+    setJoined(true);
+  };
+
+  const createRoom = () => {
+    const newRoomRef = push(ref(db, 'rooms'));
+    push(newRoomRef, { name: 'غرفة جديدة', host: 'user123' });
+  };
+
+  const leaveRoom = async () => {
+    await engine?.leaveChannel();
+    setJoined(false);
+  };
+
+  if (!joined) {
+    return (
+      <View style={styles.container}>
+        <Button title="إنشاء غرفة" onPress={createRoom} />
+        <FlatList
+          data={rooms}
+          keyExtractor={(item) => item.id}
+          renderItem={({item}) => (
+            <View style={styles.room}>
+              <Text>{item.name}</Text>
+              <Button title="دخول" onPress={() => joinRoom(item.id)} />
+            </View>
+          )}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <Text>أنت داخل الغرفة: {channelName}</Text>
+      <Button title="مغادرة" onPress={leaveRoom} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20, marginTop: 40 },
+  room: { padding: 15, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between' }
+});
 title: Manage different app versions
 sidebar_title: Manage app versions
 description: Learn about developer-facing and user-facing app versions and how EAS Build automatically manages developer-facing versions.
